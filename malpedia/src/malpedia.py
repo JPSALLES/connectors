@@ -4,6 +4,7 @@ import time
 import requests
 import json
 import re
+import pytz
 
 from datetime import datetime
 from pycti import OpenCTIConnectorHelper, get_config_variable
@@ -146,11 +147,13 @@ class Malpedia:
 
                     # for family in families:
                     # print(json.dumps(list_of_families_json, indent=4, sort_keys=True))
+                    print ("[-] Begin import of malwares families")
                     for name in list_of_families_json:
                         # we create the malware(family)
                         malware = self.helper.api.malware.create(
                             name=families_json[name]["common_name"],
                             description=families_json[name]["description"],
+                            createdByRef=malpedia_organization["id"]
                             # TODO ajouter les alias contenu dans families_json[name]["alt_name"]
                         )
                         print(
@@ -161,7 +164,7 @@ class Malpedia:
                             id=malware["id"],
                             external_reference_id=external_reference_malpedia["id"],
                         )
-                        print("------------ Référence Malpedia créée")
+                        print("------------ Référence Malpedia ajoutée")
                         # we could too add each url referenced in the malpedia entity
                         # for ref in families_json[name]["urls"]:
                         #   ref_exist = opencti_api_client.intrusion_set.read(
@@ -182,18 +185,17 @@ class Malpedia:
                             for name_rule, rule in list_yara[yara].items():
                                 print("----------- Begin Yara : " + name_rule)
                                 # extract yara date
-                                extract = re.search(
-                                    "([0-9]{4}\-[0-9]{2}\-[0-9]{2})", rule
-                                )
-                                if extract is None:
+                                date = None
+                                date = rule.split("malpedia_version = ")[1].split('\n')[0].replace('"', '').replace('-', '').strip()
+                                if date is None:
                                     date = response_json["date"]
                                 else:
-                                    date = extract.group(1)
+                                    print("Date fetched : "+date)
+                                    date = datetime.strptime(date, "%Y%m%d")
+                                    date = datetime.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
+                                print("::::::::::::: Date : "+str(date))
                                 # extract tlp
                                 tlp = rule.split("TLP:")[1].split('"')[0]
-                                print("date ::::: " + date)
-                                print("name ::::: " + name_rule)
-                                print("rule ::::: " + rule)
 
                                 # add yara
                                 indicator = self.helper.api.indicator.create(
@@ -204,13 +206,7 @@ class Malpedia:
                                     main_observable_type="File-SHA256",
                                     valid_from=date,
                                 )
-                                print("----------- Yara : " + name_rule + " créée.")
-                                print("----------------- Création Relation : ")
-                                print(indicator["id"])
-                                print(malware["id"])
-                                print(date)
-                                print(external_reference_malpedia["id"])
-                                print(families_json[name]["common_name"])
+
                                 relation = self.helper.api.stix_relation.create(
                                     fromType="Indicator",
                                     fromId=indicator["id"],
@@ -224,7 +220,7 @@ class Malpedia:
                                     + ".",
                                     weight=self.confidence_level,
                                     role_played="Unknown",
-                                    createdByRef=malpedia_organization,
+                                    createdByRef=malpedia_organization["id"],
                                     ignore_dates=True,
                                     update=True,
                                 )
