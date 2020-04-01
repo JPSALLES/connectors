@@ -1,14 +1,24 @@
 version: '3'
 services:
+<<<<<<< HEAD
   connector-mitre:
     image: opencti/connector-mitre:latest
+=======
+  connector-cryptolaemus:
+    image: opencti/connector-cryptolaemus:latest
+>>>>>>> 67675da1148528e484339cc30b2795d4cc0f5ce3
     environment:
       - OPENCTI_URL=http://localhost
       - OPENCTI_TOKEN=ChangeMe
       - CONNECTOR_ID=ChangeMe
       - CONNECTOR_TYPE=EXTERNAL_IMPORT
+<<<<<<< HEAD
       - CONNECTOR_NAME=CRYPTOLAEMUS
       - CONNECTOR_SCOPE=crowdstrike
+=======
+      - CONNECTOR_NAME=Cryptolaemus
+      - CONNECTOR_SCOPE=cryptolaemus
+>>>>>>> 67675da1148528e484339cc30b2795d4cc0f5ce3
       - CONNECTOR_CONFIDENCE_LEVEL=3
       - CONNECTOR_UPDATE_EXISTING_DATA=true
       - CONNECTOR_LOG_LEVEL=info

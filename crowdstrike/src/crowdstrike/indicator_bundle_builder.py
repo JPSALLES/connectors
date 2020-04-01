@@ -2,43 +2,45 @@
 """OpenCTI CrowdStrike indicator bundle builder module."""
 
 import logging
-from typing import List, Optional, Mapping
+from typing import List, Mapping, Optional
 
 from crowdstrike_client.api.models import Indicator
 from crowdstrike_client.api.models.report import Report
-from pycti.utils.constants import CustomProperties
+
+from pycti.utils.constants import CustomProperties, ObservableTypes
+
 from pydantic import BaseModel
+
 from stix2 import (
-    Indicator as STIXIndicator,
     Bundle,
+    ExternalReference,
     Identity,
-    MarkingDefinition,
+    Indicator as STIXIndicator,
     IntrusionSet,
     KillChainPhase,
-    Report as STIXReport,
     Malware,
+    MarkingDefinition,
     Relationship,
+    Report as STIXReport,
     Vulnerability,
-    ObservationExpression,
-    ObjectPath,
-    EqualityComparisonExpression,
-    StringConstant,
 )
 from stix2.core import STIXDomainObject
 
 from crowdstrike.utils import (
+    create_equality_observation_expression_str,
+    create_external_reference,
+    create_indicates_relationships,
     create_intrusion_set,
     create_kill_chain_phase,
     create_malware,
-    create_uses_relationships,
-    create_sector,
-    create_targets_relationships,
-    create_external_reference,
-    create_vulnerability,
-    create_indicates_relationships,
+    create_object_path,
     create_object_refs,
-    create_tags,
+    create_sector,
     create_stix2_report_from_report,
+    create_tags,
+    create_targets_relationships,
+    create_uses_relationships,
+    create_vulnerability,
 )
 
 
@@ -55,21 +57,21 @@ class IndicatorReport(BaseModel):
 class IndicatorBundleBuilder:
     """Indicator bundle builder."""
 
-    _OPENCTI_TYPE_FILE_MD5 = "file-md5"
-    _OPENCTI_TYPE_FILE_SHA1 = "file-sha1"
-    _OPENCTI_TYPE_FILE_SHA256 = "file-sha256"
-    _OPENCTI_TYPE_FILE_NAME = "file-name"
-    _OPENCTI_TYPE_FILE_PATH = "file-path"
-    _OPENCTI_TYPE_EMAIL_ADDRESS = "email-address"
-    _OPENCTI_TYPE_EMAIL_SUBJECT = "email-subject"
-    _OPENCTI_TYPE_URL = "url"
-    _OPENCTI_TYPE_DOMAIN = "domain"
-    _OPENCTI_TYPE_IPV4_ADDR = "ipv4-addr"
-    _OPENCTI_TYPE_MUTEX = "mutex"
-    _OPENCTI_TYPE_REGISTRY_KEY = "registry-key"
-    _OPENCTI_TYPE_WINDOWS_SERVICE_NAME = "windows-service-name"
-    _OPENCTI_TYPE_X509_CERTIFICATE_SERIAL_NUMBER = "x509-certificate-serial-number"
-    _OPENCTI_TYPE_X509_CERTIFICATE_ISSUER = "x509-certificate-issuer"
+    _OPENCTI_TYPE_FILE_MD5 = ObservableTypes.FILE_HASH_MD5
+    _OPENCTI_TYPE_FILE_SHA1 = ObservableTypes.FILE_HASH_SHA1
+    _OPENCTI_TYPE_FILE_SHA256 = ObservableTypes.FILE_HASH_SHA256
+    _OPENCTI_TYPE_FILE_NAME = ObservableTypes.FILE_NAME
+    _OPENCTI_TYPE_FILE_PATH = ObservableTypes.FILE_PATH
+    _OPENCTI_TYPE_EMAIL_ADDRESS = ObservableTypes.EMAIL_ADDR
+    _OPENCTI_TYPE_EMAIL_SUBJECT = ObservableTypes.EMAIL_SUBJECT
+    _OPENCTI_TYPE_URL = ObservableTypes.URL
+    _OPENCTI_TYPE_DOMAIN = ObservableTypes.DOMAIN
+    _OPENCTI_TYPE_IPV4_ADDR = ObservableTypes.IPV4_ADDR
+    _OPENCTI_TYPE_MUTEX = ObservableTypes.MUTEX
+    _OPENCTI_TYPE_REGISTRY_KEY = ObservableTypes.REGISTRY_KEY
+    _OPENCTI_TYPE_WINDOWS_SERVICE_NAME = ObservableTypes.WIN_SERVICE_NAME
+    _OPENCTI_TYPE_X509_CERTIFICATE_SERIAL_NUMBER = ObservableTypes.X509_CERT_SN
+    _OPENCTI_TYPE_X509_CERTIFICATE_ISSUER = ObservableTypes.X509_CERT_ISSUER
 
     _INDICATOR_TYPE_TO_OPENCTI_TYPE = {
         # "binary_string": "",  # NOT SUPPORTED
@@ -104,46 +106,27 @@ class IndicatorBundleBuilder:
     }
 
     _OPENCTI_TO_STIX2 = {
-        # 'autonomous-system': {
-        #     'type': 'autonomous-system',
-        #     'path': ['number'],
-        #     'transform': {
-        #         'operation': 'remove_string',
-        #         'value': 'AS'}
-        # },
-        # 'mac-addr': {'type': 'mac-addr', 'path': ['value']},
-        _OPENCTI_TYPE_DOMAIN: {"type": "domain-name", "path": ["value"]},
-        _OPENCTI_TYPE_IPV4_ADDR: {"type": "ipv4-addr", "path": ["value"]},
-        # 'ipv6-addr': {'type': 'ipv6-addr', 'path': ['value']},
-        _OPENCTI_TYPE_URL: {"type": "url", "path": ["value"]},
-        _OPENCTI_TYPE_EMAIL_ADDRESS: {"type": "email-addr", "path": ["value"]},
-        _OPENCTI_TYPE_EMAIL_SUBJECT: {"type": "email-message", "path": ["subject"]},
-        _OPENCTI_TYPE_MUTEX: {"type": "mutex", "path": ["name"]},
-        _OPENCTI_TYPE_FILE_NAME: {"type": "file", "path": ["name"]},
-        _OPENCTI_TYPE_FILE_PATH: {"type": "file", "path": ["name"]},
-        _OPENCTI_TYPE_FILE_MD5: {"type": "file", "path": ["hashes", "MD5"]},
-        _OPENCTI_TYPE_FILE_SHA1: {"type": "file", "path": ["hashes", "SHA1"]},
-        _OPENCTI_TYPE_FILE_SHA256: {"type": "file", "path": ["hashes", "SHA256"]},
-        # 'directory': {'type': 'directory', 'path': ['path']},
-        _OPENCTI_TYPE_REGISTRY_KEY: {"type": "windows-registry-key", "path": ["key"]},
-        # 'registry-key-value': {'type': 'windows-registry-value-type', 'path': ['data']},
-        # 'pdb-path': {'type': 'file', 'path': ['name']},
-        _OPENCTI_TYPE_WINDOWS_SERVICE_NAME: {
-            "type": "windows-service-ext",
-            "path": ["service_name"],
-        },
-        # 'windows-service-display-name': {
-        #     'type': 'windows-service-ext',
-        #     'path': ['display_name']
-        # },
-        _OPENCTI_TYPE_X509_CERTIFICATE_ISSUER: {
-            "type": "x509-certificate",
-            "path": ["issuer"],
-        },
-        _OPENCTI_TYPE_X509_CERTIFICATE_SERIAL_NUMBER: {
-            "type": "x509-certificate",
-            "path": ["serial_number"],
-        },
+        _OPENCTI_TYPE_DOMAIN: create_object_path("domain-name", ["value"]),
+        _OPENCTI_TYPE_IPV4_ADDR: create_object_path("ipv4-addr", ["value"]),
+        _OPENCTI_TYPE_URL: create_object_path("url", ["value"]),
+        _OPENCTI_TYPE_EMAIL_ADDRESS: create_object_path("email-addr", ["value"]),
+        _OPENCTI_TYPE_EMAIL_SUBJECT: create_object_path("email-message", ["subject"]),
+        _OPENCTI_TYPE_MUTEX: create_object_path("mutex", ["name"]),
+        _OPENCTI_TYPE_FILE_NAME: create_object_path("file", ["name"]),
+        _OPENCTI_TYPE_FILE_PATH: create_object_path("file", ["name"]),
+        _OPENCTI_TYPE_FILE_MD5: create_object_path("file", ["hashes", "MD5"]),
+        _OPENCTI_TYPE_FILE_SHA1: create_object_path("file", ["hashes", "SHA1"]),
+        _OPENCTI_TYPE_FILE_SHA256: create_object_path("file", ["hashes", "SHA256"]),
+        _OPENCTI_TYPE_REGISTRY_KEY: create_object_path("windows-registry-key", ["key"]),
+        _OPENCTI_TYPE_WINDOWS_SERVICE_NAME: create_object_path(
+            "windows-service-ext", ["service_name"]
+        ),
+        _OPENCTI_TYPE_X509_CERTIFICATE_ISSUER: create_object_path(
+            "x509-certificate", ["issuer"]
+        ),
+        _OPENCTI_TYPE_X509_CERTIFICATE_SERIAL_NUMBER: create_object_path(
+            "x509-certificate", ["serial_number"]
+        ),
     }
 
     _PATTERN_TYPE_STIX = "stix"
@@ -185,7 +168,7 @@ class IndicatorBundleBuilder:
         self.last_seen = last_seen
 
     @classmethod
-    def _get_opencti_type(cls, indicator_type: str):
+    def _get_opencti_type(cls, indicator_type: str) -> ObservableTypes:
         opencti_type = cls._INDICATOR_TYPE_TO_OPENCTI_TYPE.get(indicator_type)
         if opencti_type is None:
             raise TypeError(f"Indicator type not allowed: '{indicator_type}'")
@@ -195,15 +178,17 @@ class IndicatorBundleBuilder:
         intrusion_sets = []
         for actor_name in self.indicator.actors:
             name = actor_name
-            aliases = []
-            motivations = []
-            external_references = []
+            aliases: List[str] = []
+            primary_motivation = None
+            secondary_motivations: List[str] = []
+            external_references: List[ExternalReference] = []
 
             intrusion_set = create_intrusion_set(
                 name,
                 aliases,
                 self.author,
-                motivations,
+                primary_motivation,
+                secondary_motivations,
                 external_references,
                 self.object_marking_refs,
             )
@@ -221,27 +206,24 @@ class IndicatorBundleBuilder:
     def _create_malwares(
         self, kill_chain_phases: List[KillChainPhase]
     ) -> List[Malware]:
-        malwares = []
-
         indicator_malware_families = self.indicator.malware_families
-        if indicator_malware_families:
-            malware_external_references = []
+        if not indicator_malware_families:
+            return []
 
-            malware_name = indicator_malware_families[0]
-            malware_aliases = indicator_malware_families[1:]
+        name = indicator_malware_families[0]
+        aliases = indicator_malware_families[1:]
+        external_references: List[ExternalReference] = []
 
-            malware = create_malware(
-                malware_name,
-                malware_aliases,
-                self.author,
-                kill_chain_phases,
-                malware_external_references,
-                self.object_marking_refs,
-            )
+        malware = create_malware(
+            name,
+            aliases,
+            self.author,
+            kill_chain_phases,
+            external_references,
+            self.object_marking_refs,
+        )
 
-            malwares.append(malware)
-
-        return malwares
+        return [malware]
 
     def _create_uses_relationships(
         self, sources: List[STIXDomainObject], targets: List[STIXDomainObject]
@@ -303,34 +285,21 @@ class IndicatorBundleBuilder:
             vulnerabilities.append(vulnerability)
         return vulnerabilities
 
-    def _create_indicator_pattern(
-        self, indicator_type: str, indicator_value: str
-    ) -> ObservationExpression:
-        stix2_typing = self._OPENCTI_TO_STIX2[indicator_type]
-        lhs = ObjectPath(stix2_typing["type"], stix2_typing["path"])
-        operand = str(
-            EqualityComparisonExpression(lhs, StringConstant(indicator_value))
-        )
-        observation_expression = ObservationExpression(operand)
-        return observation_expression
-
     def _create_indicator(
         self, kill_chain_phases: List[KillChainPhase]
     ) -> STIXIndicator:
         stix_indicator = STIXIndicator(
             created_by_ref=self.author,
             name=self.indicator.indicator,
-            pattern=str(
-                self._create_indicator_pattern(
-                    self.opencti_type, self.indicator.indicator
-                )
+            pattern=create_equality_observation_expression_str(
+                self._OPENCTI_TO_STIX2[self.opencti_type], self.indicator.indicator
             ),
             valid_from=self.indicator.published_date,
             kill_chain_phases=kill_chain_phases,
             labels=["malicious-activity"],
             object_marking_refs=self.object_marking_refs,
             custom_properties={
-                CustomProperties.OBSERVABLE_TYPE: self.opencti_type,
+                CustomProperties.OBSERVABLE_TYPE: str(self.opencti_type.value),
                 CustomProperties.OBSERVABLE_VALUE: self.indicator.indicator,
                 CustomProperties.PATTERN_TYPE: self._PATTERN_TYPE_STIX,
             },
@@ -363,16 +332,20 @@ class IndicatorBundleBuilder:
         object_marking_refs: List[MarkingDefinition],
         files: List[Mapping[str, str]],
     ) -> STIXReport:
-        external_references = []
-
         # Create external references.
-        external_reference = create_external_reference(
-            self.source_name, str(report.id), report.url
-        )
-        external_references.append(external_reference)
+        external_references = []
+        report_url = report.url
+        if report_url is not None and report_url:
+            external_reference = create_external_reference(
+                self.source_name, str(report.id), report_url
+            )
+            external_references.append(external_reference)
 
         # Create tags.
-        tags = create_tags(report.tags, self.source_name)
+        tags = []
+        report_tags = report.tags
+        if report_tags is not None:
+            tags = create_tags(report_tags, self.source_name)
 
         return create_stix2_report_from_report(
             report,

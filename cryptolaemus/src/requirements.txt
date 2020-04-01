@@ -1,4 +1,9 @@
 pycti
 PyYAML
 urllib3
+<<<<<<< HEAD
 python-dateutil
+=======
+python-dateutil
+feedparser
+>>>>>>> 67675da1148528e484339cc30b2795d4cc0f5ce3

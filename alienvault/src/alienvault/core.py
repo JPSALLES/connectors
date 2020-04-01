@@ -3,22 +3,17 @@
 
 import os
 import time
-from typing import Dict, Any, Optional, Mapping, List
+from typing import Any, Dict, List, Mapping, Optional
 
 import yaml
+
 from pycti.connector.opencti_connector_helper import (
     OpenCTIConnectorHelper,
     get_config_variable,
 )
 from pycti.utils.constants import CustomProperties
-from stix2 import (
-    TLP_WHITE,
-    TLP_GREEN,
-    TLP_AMBER,
-    TLP_RED,
-    MarkingDefinition,
-    Identity,
-)
+
+from stix2 import Identity, MarkingDefinition, TLP_AMBER, TLP_GREEN, TLP_RED, TLP_WHITE
 
 from alienvault.client import AlienVaultClient
 from alienvault.importer import PulseImporter
@@ -35,6 +30,7 @@ class AlienVault:
     _CONFIG_PULSE_START_TIMESTAMP = f"{_CONFIG_NAMESPACE}.pulse_start_timestamp"
     _CONFIG_REPORT_STATUS = f"{_CONFIG_NAMESPACE}.report_status"
     _CONFIG_REPORT_TYPE = f"{_CONFIG_NAMESPACE}.report_type"
+    _CONFIG_GUESS_MALWARE = f"{_CONFIG_NAMESPACE}.guess_malware"
     _CONFIG_INTERVAL_SEC = f"{_CONFIG_NAMESPACE}.interval_sec"
 
     _CONFIG_UPDATE_EXISTING_DATA = "connector.update_existing_data"
@@ -80,12 +76,16 @@ class AlienVault:
             report_status_str
         )
 
+        guess_malware = bool(
+            self._get_configuration(config, self._CONFIG_GUESS_MALWARE)
+        )
+
         self.interval_sec = self._get_configuration(
             config, self._CONFIG_INTERVAL_SEC, is_number=True
         )
 
-        update_existing_data = self._get_configuration(
-            config, self._CONFIG_UPDATE_EXISTING_DATA
+        update_existing_data = bool(
+            self._get_configuration(config, self._CONFIG_UPDATE_EXISTING_DATA)
         )
 
         author = self._create_author()
@@ -103,6 +103,7 @@ class AlienVault:
             default_latest_pulse_timestamp,
             report_status,
             report_type,
+            guess_malware,
         )
 
     @staticmethod

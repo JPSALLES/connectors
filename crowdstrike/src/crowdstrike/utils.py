@@ -7,32 +7,39 @@ import functools
 import logging
 from datetime import datetime
 from typing import (
-    List,
-    Union,
-    Optional,
-    Mapping,
-    TypeVar,
-    Callable,
-    Generator,
     Any,
+    Callable,
     Dict,
+    Generator,
+    List,
+    Mapping,
+    Optional,
     Tuple,
+    TypeVar,
+    Union,
 )
 
 from crowdstrike_client.api.models import Response
 from crowdstrike_client.api.models.download import Download
 from crowdstrike_client.api.models.report import Actor, Entity, Report
+
 from lxml.html import fromstring
+
 from pycti.utils.constants import CustomProperties
+
 from stix2 import (
+    EqualityComparisonExpression,
     ExternalReference,
-    IntrusionSet,
-    MarkingDefinition,
     Identity,
+    IntrusionSet,
+    KillChainPhase,
+    Malware,
+    MarkingDefinition,
+    ObjectPath,
+    ObservationExpression,
     Relationship,
     Report as STIXReport,
-    Malware,
-    KillChainPhase,
+    StringConstant,
     Vulnerability,
 )
 from stix2.core import STIXDomainObject, STIXRelationshipObject
@@ -163,9 +170,11 @@ def create_malware(
     kill_chain_phases: List[KillChainPhase],
     external_references: List[ExternalReference],
     object_marking_refs: List[MarkingDefinition],
+    malware_id: Optional[str] = None,
 ) -> Malware:
     """Create a malware."""
     return Malware(
+        id=malware_id,
         created_by_ref=author,
         name=name,
         kill_chain_phases=kill_chain_phases,
@@ -178,14 +187,15 @@ def create_malware(
 
 def create_kill_chain_phase(kill_chain_name: str, phase_name: str) -> KillChainPhase:
     """Create a kill chain phase."""
-    return KillChainPhase(kill_chain_name=kill_chain_name, phase_name=phase_name,)
+    return KillChainPhase(kill_chain_name=kill_chain_name, phase_name=phase_name)
 
 
 def create_intrusion_set(
     name: str,
     aliases: List[str],
     author: Identity,
-    motivations: List[str],
+    primary_motivation: Optional[str],
+    secondary_motivations: List[str],
     external_references: List[ExternalReference],
     object_marking_refs: List[MarkingDefinition],
 ) -> IntrusionSet:
@@ -194,7 +204,8 @@ def create_intrusion_set(
         created_by_ref=author,
         name=name,
         aliases=aliases,
-        secondary_motivations=motivations,
+        primary_motivation=primary_motivation,
+        secondary_motivations=secondary_motivations,
         labels=["intrusion-set"],
         external_references=external_references,
         object_marking_refs=object_marking_refs,
@@ -204,7 +215,8 @@ def create_intrusion_set(
 def create_intrusion_set_from_actor(
     actor: Actor,
     author: Identity,
-    motivations: List[str],
+    primary_motivation: Optional[str],
+    secondary_motivation: Optional[str],
     external_references: List[ExternalReference],
     object_marking_refs: List[MarkingDefinition],
 ) -> IntrusionSet:
@@ -218,8 +230,18 @@ def create_intrusion_set_from_actor(
     alias = name.replace(" ", "")
     aliases = [alias]
 
+    secondary_motivations = []
+    if secondary_motivation is not None and secondary_motivation:
+        secondary_motivations.append(secondary_motivation)
+
     return create_intrusion_set(
-        name, aliases, author, motivations, external_references, object_marking_refs
+        name,
+        aliases,
+        author,
+        primary_motivation,
+        secondary_motivations,
+        external_references,
+        object_marking_refs,
     )
 
 
@@ -243,9 +265,12 @@ def create_sector(name: str, author: Identity) -> Identity:
     )
 
 
-def create_sector_from_entity(entity: Entity, author: Identity) -> Identity:
+def create_sector_from_entity(entity: Entity, author: Identity) -> Optional[Identity]:
     """Create a sector from entity."""
-    return create_sector(entity.value, author)
+    sector_name = entity.value
+    if sector_name is None or not sector_name:
+        return None
+    return create_sector(sector_name, author)
 
 
 def create_sectors_from_entities(
@@ -255,6 +280,8 @@ def create_sectors_from_entities(
     sectors = []
     for entity in entities:
         sector = create_sector_from_entity(entity, author)
+        if sector is None:
+            continue
         sectors.append(sector)
     return sectors
 
@@ -563,8 +590,29 @@ def split_countries_and_regions(
 
 def create_file_from_download(download: Download) -> Mapping[str, str]:
     """Create file mapping from Download model."""
+    filename = download.filename
+    if filename is None or not filename:
+        logger.error("File download missing a filename")
+        filename = "DOWNLOAD_MISSING_FILENAME"
+
+    base64_data = base64.b64encode(download.content.read())
+
     return {
-        "name": download.filename,
-        "data": base64.b64encode(download.content.read()),
+        "name": filename,
+        "data": base64_data.decode("utf-8"),
         "mime_type": "application/pdf",
     }
+
+
+def create_object_path(object_type: str, property_path: List[str]) -> ObjectPath:
+    """Create pattern operand object (property) path."""
+    return ObjectPath(object_type, property_path)
+
+
+def create_equality_observation_expression_str(
+    object_path: ObjectPath, value: str
+) -> str:
+    """Create observation expression string with pattern equality comparison expression."""  # noqa: E501
+    operand = EqualityComparisonExpression(object_path, StringConstant(value))
+    observation_expression = ObservationExpression(str(operand))
+    return str(observation_expression)
