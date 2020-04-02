@@ -126,6 +126,9 @@ class Malpedia:
                     )
                     list_actors_json = r.json()
 
+                    # Get all marking definitions
+                    marking_definitions = self.helper.api.marking_definition.list()
+
                     ### [TODO] y a pas de get/actors donc va falloir faire un appel pour chaque actor de la liste
 
                     ### WORK ###
@@ -151,21 +154,19 @@ class Malpedia:
                     print ("[-] Begin import of malwares families")
                     for name in list_of_families_json:
                         # we create the malware(family)
+                        print("alt_names : "+ str(families_json[name]["alt_names"]))
                         malware = self.helper.api.malware.create(
                             name=families_json[name]["common_name"],
                             description=families_json[name]["description"],
-                            createdByRef=malpedia_organization["id"]
-                            # TODO ajouter les alias contenu dans families_json[name]["alt_name"]
-                        )
-                        print(
-                            "------- " + families_json[name]["common_name"] + " créé."
+                            createdByRef=malpedia_organization["id"],
+                            markingDefinitions=['c4ae0c3a-3535-44e2-b206-bb451c25c749'],
+                            alias=families_json[name]["alt_names"],
                         )
                         # we add main external reference to malpedia website
                         self.helper.api.stix_entity.add_external_reference(
                             id=malware["id"],
                             external_reference_id=external_reference_malpedia["id"],
                         )
-                        print("------------ Référence Malpedia ajoutée")
                         # we could too add each url referenced in the malpedia entity
                         # for ref in families_json[name]["urls"]:
                         #   ref_exist = opencti_api_client.intrusion_set.read(
@@ -181,8 +182,8 @@ class Malpedia:
                             headers={"Authorization": "apitoken " + self.AUTH_KEY},
                         )
                         list_yara = r.json()
+
                         for yara in list_yara:
-                            # yara contains tlp level
                             for name_rule, rule in list_yara[yara].items():
                                 print("----------- Begin Yara : " + name_rule)
                                 # extract yara date
@@ -191,16 +192,14 @@ class Malpedia:
                                 if date is None:
                                     date = response_json["date"]
                                 else:
-                                    print("Date fetched : "+date)
                                     date = datetime.strptime(date, "%Y%m%d")
                                     date = datetime.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
-                                print("::::::::::::: Date : "+str(date))
                                 # extract tlp
-                                tlp = rule.split("TLP:")[1].split('"')[0]
-                                if tlp == "WHITE":
-                                    tlp = [stix2.TLP_WHITE]
-                                if tlp == "AMBER":
-                                    tlp = [stix2.TLP_AMBER]
+                                tlp = rule.split("malpedia_sharing = ")[1].split('\n')[0].replace('"', '').strip()
+                                for marking_definition in marking_definitions:
+                                    if tlp == marking_definition["definition"]:
+                                        tlp = marking_definition["id"]
+
                                 # add yara
                                 indicator = self.helper.api.indicator.create(
                                     name=name_rule,
@@ -209,9 +208,8 @@ class Malpedia:
                                     indicator_pattern=rule,
                                     main_observable_type="File-SHA256",
                                     valid_from=date,
-                                    object_marking_refs=tlp,
+                                    markingDefinitions=[tlp],
                                 )
-
                                 relation = self.helper.api.stix_relation.create(
                                     fromType="Indicator",
                                     fromId=indicator["id"],
@@ -226,6 +224,7 @@ class Malpedia:
                                     weight=self.confidence_level,
                                     role_played="Unknown",
                                     createdByRef=malpedia_organization["id"],
+                                    markingDefinitions=[tlp],
                                     ignore_dates=True,
                                     update=True,
                                 )
