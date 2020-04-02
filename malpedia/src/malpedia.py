@@ -32,6 +32,18 @@ class Malpedia:
         self.AUTH_KEY = get_config_variable(
             "AUTH_KEY", ["malpedia", "AUTH_KEY"], config
         )
+        self.need_update = True
+        self.last_update = 0
+        self.api_call = {
+            "API_CHECK_APIKEY": "check/apikey",
+            "API_GET_VERSION": "get/version",
+            "API_GET_FAMILIES": "get/families",
+            "API_LIST_ACTORS": "list/actors",
+            "API_GET_FAMILY": "get/family/",
+            "API_LIST_FAMILIES": "list/families",
+            "API_GET_YARA": "get/yara/",
+            'API_LIST_SAMPLES': 'list/samples/',
+        }
 
     def get_interval(self):
         return int(self.interval) * 60 * 60 * 24
@@ -39,9 +51,10 @@ class Malpedia:
     def next_run(self, seconds):
         return
 
+
     def run(self):
         self.helper.log_info("Fetching Malpedia datasets...")
-        while True:
+        while self.need_update:
             try:
                 # Get the current timestamp and check
                 timestamp = int(time.time())
@@ -59,70 +72,67 @@ class Malpedia:
                     self.helper.log_info("Connector has never run")
                 # If the last_run is more than interval-1 day
                 if last_run is None or (
-                    (timestamp - last_run) > ((int(self.interval) - 1) * 60 * 60 * 24)
+                    (timestamp - last_run) > ((int(self.interval)) * 60 * 60 * 24)
                 ):
                     self.helper.log_info("Connector will run!")
 
                     ## CORE ##
+                    begin_date = datetime.utcnow()
+                    self.helper.log_info("BEGIN WORK : "+datetime.strftime(begin_date,"%Y-%m-%dT%H:%M:%SZ"))
 
-                    api_call = {
-                        "API_CHECK_APIKEY": "check/apikey",
-                        "API_GET_VERSION": "get/version",
-                        "API_GET_FAMILIES": "get/families",
-                        "API_LIST_ACTORS": "list/actors",
-                        "API_GET_FAMILY": "get/family/",
-                        "API_LIST_FAMILIES": "list/families",
-                        "API_GET_YARA": "get/yara/",
-                        'API_LIST_SAMPLES': 'list/samples/',
-                    }
 
                     # API Key check
                     r = requests.get(
-                        self.MALPEDIA_API + api_call["API_CHECK_APIKEY"],
+                        self.MALPEDIA_API + self.api_call["API_CHECK_APIKEY"],
                         headers={"Authorization": "apitoken " + self.AUTH_KEY},
                     )
                     response_json = r.json()
                     if "Valid token" in response_json["detail"]:
-                        print("--- Authentication successful.")
+                        self.helper.log_info("--- Authentication successful.")
                     else:
-                        print("--- Authentication failed.")
+                        self.helper.log_info("--- Authentication failed.")
                     # API Version check
-                    r = requests.get(self.MALPEDIA_API + api_call["API_GET_VERSION"])
+                    r = requests.get(self.MALPEDIA_API + self.api_call["API_GET_VERSION"])
                     response_json = r.json()
-                    print(
+                    self.helper.log_info(
                         "--- Malpedia version: "
                         + str(response_json["version"])
                         + " ("
                         + response_json["date"]
                         + ")"
                     )
-                    ###[TODO] Le check de la version : utiliser self.helper.set_state
-                    # if malpedia_latest_check is None:
-                    #    global malpedia_latest_check = response_json["version"]
-                    # else:
-                    #    if response_json["version"] > malpedia_latest_check:
-                    # y mettre la suite
-                    #    else:
-                    #        print("----- Version " + str(response_json["version"]) + " already imported.")
+
+                    ###[TODO] Améliorer le check de la version : utiliser self.helper.set_state
+                    if (self.last_update <= int(response_json["version"])):
+                        self.need_update = True
+                        self.helper.log_info(
+                            "[-] Update is needed : " + str(self.last_update) + " >> " + str(response_json["version"]))
+                    else:
+                        self.need_update = False
+                        self.helper.log_info(
+                            "[-] Update is not needed : " + str(self.last_update) + " to " + str(response_json["version"]))
+
+                    if not self.need_update:
+                        break
 
                     ### MAIN GET ###
                     ###get list of families
                     r = requests.get(
-                        self.MALPEDIA_API + api_call["API_LIST_FAMILIES"],
+                        self.MALPEDIA_API + self.api_call["API_LIST_FAMILIES"],
                         headers={"Authorization": "apitoken " + self.AUTH_KEY},
                     )
                     list_of_families_json = r.json()
 
                     ###get families
                     r = requests.get(
-                        self.MALPEDIA_API + api_call["API_GET_FAMILIES"],
+                        self.MALPEDIA_API + self.api_call["API_GET_FAMILIES"],
                         headers={"Authorization": "apitoken " + self.AUTH_KEY},
                     )
                     families_json = r.json()
 
                     ###get list of actors
                     r = requests.get(
-                        self.MALPEDIA_API + api_call["API_LIST_ACTORS"],
+                        self.MALPEDIA_API + self.api_call["API_LIST_ACTORS"],
                         headers={"Authorization": "apitoken " + self.AUTH_KEY},
                     )
                     list_actors_json = r.json()
@@ -152,7 +162,7 @@ class Malpedia:
 
                     # for family in families:
                     # print(json.dumps(list_of_families_json, indent=4, sort_keys=True))
-                    print("[-] Begin import of malwares families")
+                    self.helper.log_info("[-] Begin import of malwares families")
                     for name in list_of_families_json:
                         # we create the malware(family)
                         malware = self.helper.api.malware.create(
@@ -184,7 +194,7 @@ class Malpedia:
 
                         # we add yara rules associated with the malware
                         r = requests.get(
-                            self.MALPEDIA_API + api_call["API_GET_YARA"] + name,
+                            self.MALPEDIA_API + self.api_call["API_GET_YARA"] + name,
                             headers={"Authorization": "apitoken " + self.AUTH_KEY},
                         )
                         list_yara = r.json()
@@ -236,12 +246,11 @@ class Malpedia:
 
                         # we add samples associated with the malware
                         r = requests.get(
-                            self.MALPEDIA_API + api_call["API_LIST_SAMPLES"] + name,
+                            self.MALPEDIA_API + self.api_call["API_LIST_SAMPLES"] + name,
                             headers={"Authorization": "apitoken " + self.AUTH_KEY},
                         )
                         list_samples = r.json()
                         for sample in list_samples:
-                            print("[----] Adding sample")
                             # we add the ample only if we find a date
                             if sample["version"] != '':
                                 date = re.search(r'\d{4}-\d{2}-\d{2}', sample["version"])
@@ -276,7 +285,11 @@ class Malpedia:
                                         update=True,
                                     )
 
-                        # Store the current timestamp as a last run
+                    end_date = datetime.utcnow()
+                    self.helper.log_info("END WORK : " + datetime.strftime(end_date, "%Y-%m-%dT%H:%M:%SZ"))
+                    interval_date = end_date - begin_date
+                    self.helper.log_info("Worked for : " + datetime.strftime(end_date, "%H:%M:%SZ"))
+                    # Store the current timestamp as a last run
                     self.helper.log_info(
                         "Connector successfully run, storing last_run as "
                         + str(timestamp)
