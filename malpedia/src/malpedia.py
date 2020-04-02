@@ -73,6 +73,7 @@ class Malpedia:
                         "API_GET_FAMILY": "get/family/",
                         "API_LIST_FAMILIES": "list/families",
                         "API_GET_YARA": "get/yara/",
+                        'API_LIST_SAMPLES': 'list/samples/',
                     }
 
                     # API Key check
@@ -151,10 +152,9 @@ class Malpedia:
 
                     # for family in families:
                     # print(json.dumps(list_of_families_json, indent=4, sort_keys=True))
-                    print ("[-] Begin import of malwares families")
+                    print("[-] Begin import of malwares families")
                     for name in list_of_families_json:
                         # we create the malware(family)
-                        print("alt_names : "+ str(families_json[name]["alt_names"]))
                         malware = self.helper.api.malware.create(
                             name=families_json[name]["common_name"],
                             description=families_json[name]["description"],
@@ -180,13 +180,14 @@ class Malpedia:
                         #            source_name="Malpedia's sources", url=ref
                         #        )
                         #    )
+
+
                         # we add yara rules associated with the malware
                         r = requests.get(
                             self.MALPEDIA_API + api_call["API_GET_YARA"] + name,
                             headers={"Authorization": "apitoken " + self.AUTH_KEY},
                         )
                         list_yara = r.json()
-
                         for yara in list_yara:
                             for name_rule, rule in list_yara[yara].items():
                                 # extract yara date
@@ -202,11 +203,12 @@ class Malpedia:
                                 for marking_definition in marking_definitions:
                                     if tlp == marking_definition["definition"]:
                                         tlp = marking_definition["id"]
-
+                                # extract author
+                                yara_author = rule.split("author = ")[1].split('\n')[0].replace('"', '').strip()
                                 # add yara
                                 indicator = self.helper.api.indicator.create(
                                     name=name_rule,
-                                    description="Yara from Malpedia",
+                                    description="[Malpedia] Yara from "+yara_author,
                                     pattern_type="yara",
                                     indicator_pattern=rule,
                                     main_observable_type="File-SHA256",
@@ -231,6 +233,49 @@ class Malpedia:
                                     ignore_dates=True,
                                     update=True,
                                 )
+
+                        # we add samples associated with the malware
+                        r = requests.get(
+                            self.MALPEDIA_API + api_call["API_LIST_SAMPLES"] + name,
+                            headers={"Authorization": "apitoken " + self.AUTH_KEY},
+                        )
+                        list_samples = r.json()
+                        for sample in list_samples:
+                            print("[----] Adding sample")
+                            # we add the ample only if we find a date
+                            if sample["version"] != '':
+                                date = re.search(r'\d{4}-\d{2}-\d{2}', sample["version"])
+                                # if version field doesn't contained date, we do not add the sample
+                                if date is not None:
+                                    date = date.group()
+                                    date = datetime.strptime(date, "%Y-%m-%d")
+                                    date = datetime.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
+                                    indicator = self.helper.api.indicator.create(
+                                        name=sample["sha256"],
+                                        description="[Malpedia] Sample version : " + sample["version"],
+                                        pattern_type="file",
+                                        indicator_pattern=sample["sha256"],
+                                        main_observable_type="File-SHA256",
+                                        valid_from=date,
+                                        markingDefinitions=['c4ae0c3a-3535-44e2-b206-bb451c25c749'],
+                                    )
+                                    relation = self.helper.api.stix_relation.create(
+                                        fromType="Indicator",
+                                        fromId=indicator["id"],
+                                        toType="Malware",
+                                        toId=malware["id"],
+                                        relationship_type="indicates",
+                                        first_seen=date,
+                                        last_seen=date,
+                                        description="[Malpedia] Sample version : " + sample["version"] + ".",
+                                        weight=self.confidence_level,
+                                        role_played="Unknown",
+                                        createdByRef=malpedia_organization["id"],
+                                        markingDefinitions=['c4ae0c3a-3535-44e2-b206-bb451c25c749'],
+                                        ignore_dates=True,
+                                        update=True,
+                                    )
+
                         # Store the current timestamp as a last run
                     self.helper.log_info(
                         "Connector successfully run, storing last_run as "
