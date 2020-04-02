@@ -168,8 +168,12 @@ class Malpedia:
                             external_reference_id=external_reference_malpedia["id"],
                         )
                         # we could too add each url referenced in the malpedia entity
-                        # for ref in families_json[name]["urls"]:
-                        #   ref_exist = opencti_api_client.intrusion_set.read(
+                        for ref in families_json[name]["urls"]:
+                            ref_name = ref.split('/')[2]
+                            ref = self.helper.api.external_reference.create(
+                                source_name=ref_name,
+                                url=ref,
+                            )
                         #        filters=[{"key": "URL", "values": [ref]}]
                         #    if not ref_exist:
                         #        external_reference = opencti_api_client.external_reference.create(
@@ -185,7 +189,6 @@ class Malpedia:
 
                         for yara in list_yara:
                             for name_rule, rule in list_yara[yara].items():
-                                print("----------- Begin Yara : " + name_rule)
                                 # extract yara date
                                 date = None
                                 date = rule.split("malpedia_version = ")[1].split('\n')[0].replace('"', '').replace('-', '').strip()
