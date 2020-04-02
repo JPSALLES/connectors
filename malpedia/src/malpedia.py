@@ -5,6 +5,7 @@ import requests
 import json
 import re
 import pytz
+import stix2
 
 from datetime import datetime
 from pycti import OpenCTIConnectorHelper, get_config_variable
@@ -196,7 +197,10 @@ class Malpedia:
                                 print("::::::::::::: Date : "+str(date))
                                 # extract tlp
                                 tlp = rule.split("TLP:")[1].split('"')[0]
-
+                                if tlp == "WHITE":
+                                    tlp = [stix2.TLP_WHITE]
+                                if tlp == "AMBER":
+                                    tlp = [stix2.TLP_AMBER]
                                 # add yara
                                 indicator = self.helper.api.indicator.create(
                                     name=name_rule,
@@ -205,6 +209,7 @@ class Malpedia:
                                     indicator_pattern=rule,
                                     main_observable_type="File-SHA256",
                                     valid_from=date,
+                                    object_marking_refs=tlp,
                                 )
 
                                 relation = self.helper.api.stix_relation.create(
