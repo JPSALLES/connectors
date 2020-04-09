@@ -5,7 +5,7 @@ import base64
 import calendar
 import functools
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import (
     Any,
     Callable,
@@ -31,6 +31,7 @@ from stix2 import (
     EqualityComparisonExpression,
     ExternalReference,
     Identity,
+    Indicator as STIXIndicator,
     IntrusionSet,
     KillChainPhase,
     Malware,
@@ -42,7 +43,7 @@ from stix2 import (
     StringConstant,
     Vulnerability,
 )
-from stix2.core import STIXDomainObject, STIXRelationshipObject
+from stix2.v20 import _DomainObject, _RelationshipObject
 
 
 logger = logging.getLogger(__name__)
@@ -129,15 +130,15 @@ def datetime_to_timestamp(datetime_value: datetime) -> int:
 
 
 def timestamp_to_datetime(timestamp: int) -> datetime:
-    return datetime.utcfromtimestamp(timestamp)
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc)
 
 
 def datetime_utc_now() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def datetime_utc_epoch_start() -> datetime:
-    return datetime.utcfromtimestamp(0)
+    return timestamp_to_datetime(0)
 
 
 def create_external_reference(
@@ -215,8 +216,6 @@ def create_intrusion_set(
 def create_intrusion_set_from_actor(
     actor: Actor,
     author: Identity,
-    primary_motivation: Optional[str],
-    secondary_motivation: Optional[str],
     external_references: List[ExternalReference],
     object_marking_refs: List[MarkingDefinition],
 ) -> IntrusionSet:
@@ -225,14 +224,45 @@ def create_intrusion_set_from_actor(
     if name is None:
         name = f"NO_NAME_{actor.id}"
 
-    # Add name without space as alias because the indicator query returns
-    # actor names without spaces.
-    alias = name.replace(" ", "")
-    aliases = [alias]
+    return create_intrusion_set_from_name(
+        name, author, external_references, object_marking_refs
+    )
 
-    secondary_motivations = []
-    if secondary_motivation is not None and secondary_motivation:
-        secondary_motivations.append(secondary_motivation)
+
+def create_intrusion_sets_from_names(
+    names: List[str],
+    author: Identity,
+    external_references: List[ExternalReference],
+    object_marking_refs: List[MarkingDefinition],
+) -> List[IntrusionSet]:
+    """Create intrusion sets with given names."""
+    intrusion_sets = []
+
+    for name in names:
+        intrusion_set = create_intrusion_set_from_name(
+            name, author, external_references, object_marking_refs
+        )
+
+        intrusion_sets.append(intrusion_set)
+
+    return intrusion_sets
+
+
+def create_intrusion_set_from_name(
+    name: str,
+    author: Identity,
+    external_references: List[ExternalReference],
+    object_marking_refs: List[MarkingDefinition],
+) -> IntrusionSet:
+    """Create intrusion set with given name."""
+    aliases: List[str] = []
+
+    alias = name.replace(" ", "")
+    if alias != name:
+        aliases.append(alias)
+
+    primary_motivation = None
+    secondary_motivations: List[str] = []
 
     return create_intrusion_set(
         name,
@@ -313,20 +343,11 @@ def create_country(entity: Entity, author: Identity) -> Identity:
     )
 
 
-def create_countries(entities: List[Entity], author: Identity) -> List[Identity]:
-    """Create countries."""
-    countries = []
-    for entity in entities:
-        country = create_country(entity, author)
-        countries.append(country)
-    return countries
-
-
 def create_relationship(
     relationship_type: str,
     author: Identity,
-    source: STIXDomainObject,
-    target: STIXDomainObject,
+    source: _DomainObject,
+    target: _DomainObject,
     object_marking_refs: List[MarkingDefinition],
     first_seen: datetime,
     last_seen: datetime,
@@ -350,8 +371,8 @@ def create_relationship(
 def create_relationships(
     relationship_type: str,
     author: Identity,
-    sources: List[STIXDomainObject],
-    targets: List[STIXDomainObject],
+    sources: List[_DomainObject],
+    targets: List[_DomainObject],
     object_marking_refs: List[MarkingDefinition],
     first_seen: datetime,
     last_seen: datetime,
@@ -377,8 +398,8 @@ def create_relationships(
 
 def create_targets_relationships(
     author: Identity,
-    sources: List[STIXDomainObject],
-    targets: List[STIXDomainObject],
+    sources: List[_DomainObject],
+    targets: List[_DomainObject],
     object_marking_refs: List[MarkingDefinition],
     first_seen: datetime,
     last_seen: datetime,
@@ -399,8 +420,8 @@ def create_targets_relationships(
 
 def create_uses_relationships(
     author: Identity,
-    sources: List[STIXDomainObject],
-    targets: List[STIXDomainObject],
+    sources: List[_DomainObject],
+    targets: List[_DomainObject],
     object_marking_refs: List[MarkingDefinition],
     first_seen: datetime,
     last_seen: datetime,
@@ -421,8 +442,8 @@ def create_uses_relationships(
 
 def create_indicates_relationships(
     author: Identity,
-    sources: List[STIXDomainObject],
-    targets: List[STIXDomainObject],
+    sources: List[_DomainObject],
+    targets: List[_DomainObject],
     object_marking_refs: List[MarkingDefinition],
     first_seen: datetime,
     last_seen: datetime,
@@ -443,16 +464,16 @@ def create_indicates_relationships(
 
 def create_object_refs(
     *objects: Union[
-        STIXDomainObject,
-        STIXRelationshipObject,
-        List[STIXRelationshipObject],
-        List[STIXDomainObject],
+        _DomainObject,
+        _RelationshipObject,
+        List[_RelationshipObject],
+        List[_DomainObject],
     ]
-) -> List[STIXDomainObject]:
+) -> List[Union[_DomainObject, _RelationshipObject]]:
     """Create object references."""
     object_refs = []
     for obj in objects:
-        if isinstance(obj, STIXDomainObject):
+        if not isinstance(obj, list):
             object_refs.append(obj)
         else:
             object_refs.extend(obj)
@@ -494,7 +515,7 @@ def create_report(
     description: str,
     published: datetime,
     author: Identity,
-    object_refs: List[STIXDomainObject],
+    object_refs: List[_DomainObject],
     external_references: List[ExternalReference],
     object_marking_refs: List[MarkingDefinition],
     report_status: int,
@@ -526,17 +547,27 @@ def create_report(
 def create_stix2_report_from_report(
     report: Report,
     author: Identity,
-    object_refs: List[STIXDomainObject],
-    external_references: List[ExternalReference],
+    source_name: str,
+    object_refs: List[_DomainObject],
     object_marking_refs: List[MarkingDefinition],
     report_status: int,
     report_type: str,
     confidence_level: int,
-    tags: List[Mapping[str, str]],
     files: List[Mapping[str, str]],
 ) -> STIXReport:
-    """Create a report."""
-    # TODO: What to do with the description?
+    external_references = []
+    report_url = report.url
+    if report_url is not None and report_url:
+        external_reference = create_external_reference(
+            source_name, str(report.id), report_url
+        )
+        external_references.append(external_reference)
+
+    tags = []
+    report_tags = report.tags
+    if report_tags is not None:
+        tags = create_tags(report_tags, source_name)
+
     if report.rich_text_description is not None:
         description = remove_html_tags(report.rich_text_description)
     elif report.description is not None:
@@ -604,6 +635,23 @@ def create_file_from_download(download: Download) -> Mapping[str, str]:
     }
 
 
+def convert_comma_separated_str_to_list(input_str: str, trim: bool = True) -> List[str]:
+    """Convert comma separated string to list of strings."""
+    comma_separated_str = input_str.strip() if trim else input_str
+    if not comma_separated_str:
+        return []
+
+    result = []
+    for part_str in comma_separated_str.split(","):
+        value = part_str
+        if trim:
+            value = value.strip()
+        if not value:
+            continue
+        result.append(value)
+    return result
+
+
 def create_object_path(object_type: str, property_path: List[str]) -> ObjectPath:
     """Create pattern operand object (property) path."""
     return ObjectPath(object_type, property_path)
@@ -616,3 +664,35 @@ def create_equality_observation_expression_str(
     operand = EqualityComparisonExpression(object_path, StringConstant(value))
     observation_expression = ObservationExpression(str(operand))
     return str(observation_expression)
+
+
+def create_indicator(
+    name: str,
+    description: str,
+    author: Identity,
+    valid_from: datetime,
+    kill_chain_phases: List[KillChainPhase],
+    observable_type: str,
+    observable_value: str,
+    pattern_type: str,
+    pattern_value: str,
+    indicator_pattern: str,
+    object_marking_refs: List[MarkingDefinition],
+) -> STIXIndicator:
+    """Create an indicator."""
+    return STIXIndicator(
+        created_by_ref=author,
+        name=name,
+        description=description,
+        pattern=pattern_value,
+        valid_from=valid_from,
+        kill_chain_phases=kill_chain_phases,
+        labels=["malicious-activity"],
+        object_marking_refs=object_marking_refs,
+        custom_properties={
+            CustomProperties.OBSERVABLE_TYPE: observable_type,
+            CustomProperties.OBSERVABLE_VALUE: observable_value,
+            CustomProperties.PATTERN_TYPE: pattern_type,
+            CustomProperties.INDICATOR_PATTERN: indicator_pattern,
+        },
+    )

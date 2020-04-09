@@ -20,7 +20,7 @@ from stix2 import (
     Report,
     Vulnerability,
 )
-from stix2.core import STIXDomainObject
+from stix2.v20 import _DomainObject
 
 from alienvault.models import Pulse, PulseIndicator
 from alienvault.utils import (
@@ -131,7 +131,7 @@ class PulseBundleBuilder:
     def _create_intrusion_sets(self) -> List[IntrusionSet]:
         intrusion_sets = []
         adversary = self.pulse.adversary
-        if adversary:
+        if adversary is not None and adversary:
             intrusion_set = create_intrusion_set(
                 adversary, self.author, self.object_marking_refs
             )
@@ -160,7 +160,7 @@ class PulseBundleBuilder:
         return malware_list
 
     def _create_uses_relationships(
-        self, sources: List[STIXDomainObject], targets: List[STIXDomainObject]
+        self, sources: List[_DomainObject], targets: List[_DomainObject]
     ) -> List[Relationship]:
         return create_uses_relationships(
             self.author,
@@ -180,7 +180,7 @@ class PulseBundleBuilder:
         return target_sectors
 
     def _create_targets_relationships(
-        self, sources: List[STIXDomainObject], targets: List[STIXDomainObject]
+        self, sources: List[_DomainObject], targets: List[_DomainObject]
     ) -> List[Relationship]:
         return create_targets_relationships(
             self.author,
@@ -281,8 +281,16 @@ class PulseBundleBuilder:
             filter(lambda x: x.type == self._INDICATOR_TYPE_YARA, self.pulse.indicators)
         )
         for yara_pulse_indicator in yara_pulse_indicators:
+            yara_rule_str = yara_pulse_indicator.content
+            if yara_rule_str is None or not yara_rule_str:
+                continue
+
+            name = yara_pulse_indicator.title
+            if not name:
+                name = yara_pulse_indicator.indicator
+
             observable_type = self._PATTERN_TYPE_YARA_OBSERVABLE_TYPE
-            observable_value = yara_pulse_indicator.content
+            observable_value = yara_rule_str
 
             pattern_type = self._PATTERN_TYPE_YARA
 
@@ -290,10 +298,10 @@ class PulseBundleBuilder:
             pattern_value = "[file:hashes.md5 = 'd41d8cd98f00b204e9800998ecf8427e']"
 
             # YARA rule as indicator pattern.
-            indicator_pattern = yara_pulse_indicator.content
+            indicator_pattern = yara_rule_str
 
             yara_indicator = self._create_indicator(
-                yara_pulse_indicator.indicator,
+                name,
                 self._create_indicator_description(yara_pulse_indicator),
                 yara_pulse_indicator.created,
                 observable_type,
@@ -354,7 +362,7 @@ class PulseBundleBuilder:
         return indicators
 
     def _create_indicates_relationships(
-        self, sources: List[STIXDomainObject], targets: List[STIXDomainObject]
+        self, sources: List[_DomainObject], targets: List[_DomainObject]
     ) -> List[Relationship]:
         return create_indicates_relationships(
             self.author,
@@ -366,7 +374,7 @@ class PulseBundleBuilder:
             self.confidence_level,
         )
 
-    def _create_report(self, object_refs: List[STIXDomainObject]) -> Report:
+    def _create_report(self, object_refs: List[_DomainObject]) -> Report:
         external_references = self._create_report_external_references()
         tags = self._create_report_tags()
 
@@ -410,7 +418,7 @@ class PulseBundleBuilder:
             tags.append(tag)
         return tags
 
-    def _create_reports(self, object_refs: List[STIXDomainObject]) -> List[Report]:
+    def _create_reports(self, object_refs: List[_DomainObject]) -> List[Report]:
         return [self._create_report(object_refs)]
 
     def build(self) -> Bundle:

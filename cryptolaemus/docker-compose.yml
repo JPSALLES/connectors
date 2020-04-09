@@ -5,8 +5,12 @@ services:
     image: opencti/connector-mitre:latest
 =======
   connector-cryptolaemus:
+<<<<<<< HEAD
     image: opencti/connector-cryptolaemus:latest
 >>>>>>> 67675da1148528e484339cc30b2795d4cc0f5ce3
+=======
+    image: opencti/connector-cryptolaemus:3.1.0
+>>>>>>> 699d6b23171dc6f1b8ee3adbbaef6a9b2b598e25
     environment:
       - OPENCTI_URL=http://localhost
       - OPENCTI_TOKEN=ChangeMe
