@@ -155,7 +155,7 @@ class Misp:
             # Query with pagination of 100
             current_page = 1
             while True:
-                kwargs["limit"] = 100
+                kwargs["limit"] = 50
                 kwargs["page"] = current_page
                 self.helper.log_info(
                     "Fetching MISP events with args: " + json.dumps(kwargs)
@@ -175,16 +175,16 @@ class Misp:
                 if len(events) == 0:
                     break
                 try:
-                    timestamp = self.process_events(events)
+                    self.process_events(events)
                 except Exception as e:
                     self.helper.log_error(str(e))
                 current_page += 1
-            # Set the last_run timestamp
             self.helper.set_state({"last_run": timestamp})
             time.sleep(self.get_interval())
 
     def process_events(self, events):
         for event in events:
+            self.helper.log_info("Processing event " + event["Event"]["uuid"])
             ### Default variables
             added_markings = []
             added_entities = []
@@ -313,10 +313,10 @@ class Misp:
                 )
                 bundle_objects.append(report)
             bundle = Bundle(objects=bundle_objects).serialize()
+            self.helper.log_info("Sending event STIX2 bundle")
             self.helper.send_stix2_bundle(
                 bundle, None, self.update_existing_data, False
             )
-            return datetime.timestamp(parse(event["Event"]["date"]))
 
     def process_attribute(self, author, event_elements, event_markings, attribute):
         try:

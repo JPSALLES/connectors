@@ -2,7 +2,6 @@ import os
 import yaml
 import time
 import requests
-import json
 import re
 import pytz
 import stix2
@@ -135,7 +134,7 @@ class Malpedia:
                         self.MALPEDIA_API + self.api_call["API_LIST_ACTORS"],
                         headers={"Authorization": "apitoken " + self.AUTH_KEY},
                     )
-                    list_actors_json = r.json()
+                    # list_actors_json = r.json()
 
                     # Get all marking definitions
                     marking_definitions = self.helper.api.marking_definition.list()
@@ -209,12 +208,20 @@ class Malpedia:
                                     date = datetime.strptime(date, "%Y%m%d")
                                     date = datetime.strftime(date, "%Y-%m-%dT%H:%M:%SZ")
                                 # extract tlp
+<<<<<<< HEAD
                                 tlp = rule.split("malpedia_sharing = ")[1].split('\n')[0].replace('"', '').strip()
                                 for marking_definition in marking_definitions:
                                     if tlp == marking_definition["definition"]:
                                         tlp = marking_definition["id"]
                                 # extract author
                                 yara_author = rule.split("author = ")[1].split('\n')[0].replace('"', '').strip()
+=======
+                                # tlp = rule.split("TLP:")[1].split('"')[0]
+                                print("date ::::: " + date)
+                                print("name ::::: " + name_rule)
+                                print("rule ::::: " + rule)
+
+>>>>>>> 679e7f2bd36e83d7b39b0e6bef3785e01fc7bb06
                                 # add yara
                                 indicator = self.helper.api.indicator.create(
                                     name=name_rule,
@@ -225,7 +232,18 @@ class Malpedia:
                                     valid_from=date,
                                     markingDefinitions=[tlp],
                                 )
+<<<<<<< HEAD
                                 relation = self.helper.api.stix_relation.create(
+=======
+                                print("----------- Yara : " + name_rule + " créée.")
+                                print("----------------- Création Relation : ")
+                                print(indicator["id"])
+                                print(malware["id"])
+                                print(date)
+                                print(external_reference_malpedia["id"])
+                                print(families_json[name]["common_name"])
+                                self.helper.api.stix_relation.create(
+>>>>>>> 679e7f2bd36e83d7b39b0e6bef3785e01fc7bb06
                                     fromType="Indicator",
                                     fromId=indicator["id"],
                                     toType="Malware",
